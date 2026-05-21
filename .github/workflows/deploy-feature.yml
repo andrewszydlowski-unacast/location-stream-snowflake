@@ -1,29 +1,28 @@
-# Manual deploy to TEST.GITHUB_DEPLOY (mock prod). Requires approval on GitHub Environment "mock-prod".
+# Auto-deploy feature branches matching cp-* to TEST.<BRANCH_PREFIX>* schemas.
+# Example: cp-feature-1 -> TEST.CP_FEATURE_1_METRICS
+#
+# Uses the same Snowflake secrets as staging (GitHub Environment: staging).
 
-name: Deploy mock prod
+name: Deploy feature branch
 
 on:
-  workflow_dispatch:
-    inputs:
-      git_ref:
-        description: Branch, tag, or SHA to deploy
-        required: false
-        default: main
+  push:
+    branches:
+      - "cp-*"
 
 permissions:
   contents: read
 
 jobs:
-  deploy-mock-prod:
+  deploy-feature:
     runs-on: ubuntu-latest
-    environment: mock-prod
+    environment: staging
     env:
-      DEPLOY_ENV: mock-prod
+      FEATURE_BRANCH: ${{ github.ref_name }}
       SNOWFLAKE_DATABASE: TEST
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.git_ref }}
           persist-credentials: false
 
       - uses: actions/setup-python@v5
@@ -33,8 +32,10 @@ jobs:
       - name: Install script dependencies
         run: pip install -r requirements.txt
 
-      - name: Render SQL for mock-prod
-        run: python scripts/render_sql.py mock-prod --list
+      - name: Render SQL for feature branch
+        run: |
+          echo "Branch: $FEATURE_BRANCH"
+          python scripts/render_sql.py --branch "$FEATURE_BRANCH" --list
 
       - uses: snowflakedb/snowflake-cli-action@v2
         with:
@@ -64,10 +65,13 @@ jobs:
           SNOWFLAKE_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE || 'ASZYDLOWSKI_WH' }}
           SNOWFLAKE_MFA: ${{ secrets.SNOWFLAKE_MFA }}
         run: |
-          SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
-          SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
-          mapfile -t DEPLOY_FILES < <(python scripts/render_sql.py mock-prod --paths)
+          mapfile -t DEPLOY_FILES < <(python scripts/render_sql.py --branch "$FEATURE_BRANCH" --paths)
           for f in "${DEPLOY_FILES[@]}"; do
+            unset SNOWFLAKE_MFA_PASSCODE
+            unset SNOW_OPTS
+            SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
+            SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
             echo "Applying $f"
             snow "${SNOW_OPTS[@]}" -f "$f"
+            sleep 30
           done

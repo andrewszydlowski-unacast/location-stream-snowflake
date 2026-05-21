@@ -1,6 +1,9 @@
 # Objects are deployed in list order (DDL before procedures).
 version: 1
 objects:
+  - id: ddl.metrics.schema
+    path: sql/ddl/metrics/000_create_metrics_schema.sql
+    type: ddl
   - id: ddl.metrics.stats
     path: sql/ddl/metrics/001_stats_table.sql
     type: ddl

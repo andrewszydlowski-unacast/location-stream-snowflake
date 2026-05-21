@@ -1,4 +1,4 @@
-# Deploy rendered SQL to TEST.PUBLIC (staging).
+# Deploy rendered SQL to TEST.<schema_prefix>* schemas (e.g. STAGING_METRICS).
 # Requires GitHub Environment "staging" and Snowflake/VPN secrets (see README).
 
 name: Deploy staging
@@ -18,7 +18,6 @@ jobs:
     env:
       DEPLOY_ENV: staging
       SNOWFLAKE_DATABASE: TEST
-      SNOWFLAKE_SCHEMA: PUBLIC
     steps:
       - uses: actions/checkout@v4
         with:
