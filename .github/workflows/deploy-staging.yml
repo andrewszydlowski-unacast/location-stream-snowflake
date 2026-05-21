@@ -62,10 +62,11 @@ jobs:
           SNOWFLAKE_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE || 'ASZYDLOWSKI_WH' }}
           SNOWFLAKE_MFA: ${{ secrets.SNOWFLAKE_MFA }}
         run: |
-          SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
-          SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
           mapfile -t DEPLOY_FILES < <(python scripts/render_sql.py staging --paths)
           for f in "${DEPLOY_FILES[@]}"; do
+            SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
+            SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
             echo "Applying $f"
             snow "${SNOW_OPTS[@]}" -f "$f"
+            sleep 30
           done
