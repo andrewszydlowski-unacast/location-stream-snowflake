@@ -124,14 +124,17 @@ def build_render_context(
     def object_fqn(base_schema: str, object_name: str) -> str:
         return f"{database}.{schema_name(base_schema)}.{object_name}"
 
+    metrics_schema = schema_name("METRICS")
     ctx: dict[str, Any] = {
         "environment": environment,
         "database": database,
         "schema_prefix": schema_prefix,
+        # Full schema name (prefix + base), e.g. STAGING_METRICS, CP_FEATURE_1_METRICS, METRICS
+        "schema": metrics_schema,
         "schema_name": schema_name,
         "object_fqn": object_fqn,
-        "metrics_schema": schema_name("METRICS"),
-        "fqn_metrics": f"{database}.{schema_name('METRICS')}",
+        "metrics_schema": metrics_schema,
+        "fqn_metrics": f"{database}.{metrics_schema}",
     }
     if branch:
         ctx["branch"] = branch

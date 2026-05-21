@@ -17,13 +17,16 @@ install:
 	$(PIP) install -q -r requirements.txt
 
 # Same checks as GitHub Actions ci.yml
-ci: validate render-staging render-mock-prod render-prod render-branch check-rendered check-prod-render check-branch-render
+ci: validate test-render-contexts render-staging render-mock-prod render-prod render-branch check-rendered check-prod-render check-branch-render
 
 # Local: ensure venv exists, install deps, run ci
 test: install ci
 
 validate:
 	$(PYTHON) scripts/render_sql.py --validate-sources-only
+
+test-render-contexts:
+	$(PYTHON) scripts/test_render_contexts.py
 
 render-staging:
 	$(PYTHON) scripts/render_sql.py staging --list

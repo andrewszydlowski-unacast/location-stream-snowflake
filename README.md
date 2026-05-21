@@ -34,7 +34,8 @@ build/                        # rendered SQL (gitignored)
 |----------|-------------|
 | `{{ database }}` | From env config |
 | `{{ schema_prefix }}` | From env config, normalized to `STAGING_` style |
-| `{{ schema_prefix }}METRICS` | Prefix + base; with empty prefix → `METRICS` only |
+| `{{ schema }}` | Full metrics schema name (`STAGING_METRICS`, `CP_FEATURE_1_METRICS`, `METRICS` in prod) |
+| `{{ schema_prefix }}METRICS` | Same as `{{ schema }}` when base is METRICS |
 
 Optional Jinja callables (for complex templates):
 
