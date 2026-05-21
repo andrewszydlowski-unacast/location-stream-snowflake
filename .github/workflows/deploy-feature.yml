@@ -73,4 +73,5 @@ jobs:
             SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
             echo "Applying $f"
             snow "${SNOW_OPTS[@]}" -f "$f"
+            sleep 30
           done
