@@ -67,6 +67,8 @@ jobs:
         run: |
           mapfile -t DEPLOY_FILES < <(python scripts/render_sql.py --branch "$FEATURE_BRANCH" --paths)
           for f in "${DEPLOY_FILES[@]}"; do
+            unset SNOWFLAKE_MFA_PASSCODE
+            unset SNOW_OPTS
             SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
             SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
             echo "Applying $f"
