@@ -97,8 +97,8 @@ python scripts/render_sql.py --branch cp-feature-1 --list
 |--------|-------------------|----------------|--------|
 | `staging.yaml` | `staging` | `STAGING_METRICS` | Push to `main` |
 | `cp-*` branches | `staging` (same secrets) | `CP_FEATURE_1_METRICS` | Push to `cp-*` |
-| `mock-prod.yaml` | `mock-prod` | `GITHUB_DEPLOY_METRICS` | Manual |
-| `prod.yaml` | `prod` (future) | `METRICS` | Not implemented |
+| `mock-prod.yaml` | `mock-prod` | `GITHUB_DEPLOY_METRICS` | Tag `release-v*.*.*-rc.*` → [docs/RELEASE.md](docs/RELEASE.md) |
+| `prod.yaml` | `prod` (future) | `METRICS` | Tag `release-v*.*.*` (not implemented) |
 
 ## Verify (staging)
 
@@ -107,6 +107,17 @@ SHOW SCHEMAS LIKE 'STAGING_%' IN DATABASE TEST;
 CALL TEST.STAGING_METRICS.RECORD_STAT('test-job', 'test', 'TEST_STAT', 'Smoke', 'SUM', 1.0, '{}');
 SELECT * FROM TEST.STAGING_METRICS.STATS WHERE JOBID = 'test-job';
 ```
+
+## Mock-prod releases
+
+Push an RC tag (see **[docs/RELEASE.md](docs/RELEASE.md)**):
+
+```bash
+git tag release-v1.0.0-rc.1
+git push origin release-v1.0.0-rc.1
+```
+
+Workflow: **prepare** (CI + render) → **approve** `mock-prod` environment → **deploy** to Snowflake.
 
 ## Verify (feature branch)
 

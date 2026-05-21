@@ -1,0 +1,167 @@
+# Mock-prod release: tag -> prepare (CI + render, no Snowflake writes) -> approval -> deploy.
+#
+# Tag convention: release-vMAJOR.MINOR.PATCH-rc.N
+#   Example: release-v1.0.0-rc.1
+#
+# GitHub Environment "mock-prod": required reviewers on deploy-release job only.
+# Limit deployment tags in environment settings to: release-v*-*-rc.*
+
+name: Release mock prod
+
+on:
+  push:
+    tags:
+      - "release-v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. release-v1.0.0-rc.1)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  prepare-release:
+    name: Prepare release (${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }})
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      git_sha: ${{ steps.meta.outputs.git_sha }}
+      snowflake_target: ${{ steps.meta.outputs.snowflake_target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          persist-credentials: false
+
+      - name: Validate release tag
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          if [[ ! "$TAG" =~ ^release-v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "Tag must match release-vMAJOR.MINOR.PATCH-rc.N (e.g. release-v1.0.0-rc.1); got: $TAG"
+            exit 1
+          fi
+          echo "Valid release tag: $TAG"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run CI checks (render tests)
+        run: make ci
+
+      - name: Render mock-prod SQL for this release
+        run: |
+          python scripts/render_sql.py mock-prod --list
+          python scripts/write_deploy_paths.py mock-prod -o build/mock-prod/deploy-paths.txt
+
+      - name: Record release metadata
+        id: meta
+        run: |
+          TARGET=$(python -c "import yaml; print(yaml.safe_load(open('build/mock-prod/.render-env.yaml'))['fqn_metrics'])")
+          {
+            echo "release_tag=${{ env.RELEASE_TAG }}"
+            echo "git_sha=${{ github.sha }}"
+            echo "snowflake_target=$TARGET"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "release_tag=${{ env.RELEASE_TAG }}"
+            echo "git_sha=${{ github.sha }}"
+            echo "workflow_run_id=${{ github.run_id }}"
+          } > build/mock-prod/release-metadata.txt
+
+      - name: Summarize release artifact
+        run: |
+          echo "## Mock-prod release prepare" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`${{ env.RELEASE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SHA | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Snowflake target | \`${{ steps.meta.outputs.snowflake_target }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### SQL to deploy (after approval)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat build/mock-prod/deploy-paths.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload rendered SQL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-prod-sql-${{ env.RELEASE_TAG }}
+          path: build/mock-prod/
+          retention-days: 30
+          if-no-files-found: error
+
+  deploy-release:
+    name: Deploy to Snowflake (${{ needs.prepare-release.outputs.release_tag }})
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    environment: mock-prod
+    env:
+      RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
+      SNOWFLAKE_DATABASE: TEST
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download rendered SQL from prepare job
+        uses: actions/download-artifact@v4
+        with:
+          name: mock-prod-sql-${{ needs.prepare-release.outputs.release_tag }}
+          path: build/mock-prod
+
+      - uses: snowflakedb/snowflake-cli-action@v2
+        with:
+          cli-version: "3.16"
+          default-config-file-path: "config.toml"
+
+      - name: Generate OTP
+        id: otp
+        run: |
+          sudo apt-get install -y oathtool
+          echo "token=$(oathtool -b --totp '${{ secrets.OTP_SECRET }}')" >> $GITHUB_OUTPUT
+
+      - name: Setup Pritunl and Connect
+        uses: nathanielvarona/pritunl-client-github-action@v1
+        with:
+          profile-file: ${{ secrets.PRITUNL_PROFILE_FILE }}
+          profile-pin: ${{ secrets.PRITUNL_PROFILE_PIN }}${{ steps.otp.outputs.token }}
+          vpn-mode: "ovpn"
+
+      - name: Apply approved SQL to Snowflake
+        env:
+          SNOWFLAKE_AUTHENTICATOR: USERNAME_PASSWORD_MFA
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ vars.SNOWFLAKE_ROLE || 'PUBLIC' }}
+          SNOWFLAKE_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE || 'ASZYDLOWSKI_WH' }}
+          SNOWFLAKE_MFA: ${{ secrets.SNOWFLAKE_MFA }}
+        run: |
+          echo "Deploying release ${{ env.RELEASE_TAG }} to ${{ needs.prepare-release.outputs.snowflake_target }}"
+          test -f build/mock-prod/deploy-paths.txt
+          test -f build/mock-prod/release-metadata.txt
+          mapfile -t DEPLOY_FILES < build/mock-prod/deploy-paths.txt
+          for f in "${DEPLOY_FILES[@]}"; do
+            test -f "$f" || { echo "Missing artifact file: $f"; exit 1; }
+            SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
+            SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
+            echo "Applying $f"
+            snow "${SNOW_OPTS[@]}" -f "$f"
+          done
+
+      - name: Deployment complete
+        run: |
+          echo "## Deployed ${{ env.RELEASE_TAG }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target: \`${{ needs.prepare-release.outputs.snowflake_target }}\`" >> "$GITHUB_STEP_SUMMARY"
+          cat build/mock-prod/release-metadata.txt >> "$GITHUB_STEP_SUMMARY"

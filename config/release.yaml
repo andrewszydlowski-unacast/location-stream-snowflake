@@ -1,0 +1,11 @@
+# Mock-prod release tags (see docs/RELEASE.md)
+#
+# Examples:
+#   release-v1.0.0-rc.1
+#   release-v1.2.3-rc.2
+#
+# Future production (not automated yet):
+#   release-v1.0.0
+
+tag_glob: "release-v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+tag_regex: "^release-v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$"
