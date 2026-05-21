@@ -67,7 +67,8 @@ jobs:
         run: |
           SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
           SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
-          while IFS= read -r f; do
+          mapfile -t DEPLOY_FILES < <(python scripts/render_sql.py mock-prod --paths)
+          for f in "${DEPLOY_FILES[@]}"; do
             echo "Applying $f"
             snow "${SNOW_OPTS[@]}" -f "$f"
-          done < <(python scripts/render_sql.py mock-prod --paths)
+          done

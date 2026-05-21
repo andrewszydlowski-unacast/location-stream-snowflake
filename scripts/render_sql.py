@@ -132,7 +132,9 @@ def main() -> int:
 
     ctx = load_environment(args.environment)
     sql_count = len(written) - 1
-    print(f"Rendered {sql_count} file(s) -> {ctx['fqn']} in {out}")
+    summary = f"Rendered {sql_count} file(s) -> {ctx['fqn']} in {out}"
+    # --paths is consumed by shell loops; keep stdout path-only
+    print(summary, file=sys.stderr if args.paths else sys.stdout)
 
     for path in written:
         if path.name == ".render-env.yaml":
