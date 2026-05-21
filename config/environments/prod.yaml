@@ -1,0 +1,5 @@
+# Production — no schema prefix (matches LOCATION_STREAM.METRICS, etc.)
+# Deploy workflow not wired yet; use for render validation and future prod CD.
+name: prod
+database: LOCATION_STREAM
+schema_prefix: ""

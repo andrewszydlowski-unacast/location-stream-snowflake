@@ -1,4 +1,5 @@
 # GitHub Environment: staging — auto-deploy on push to main
 name: staging
 database: TEST
-schema: PUBLIC
+# Uppercase prefix with trailing underscore; prepended to hardcoded base schema names (e.g. METRICS)
+schema_prefix: STAGING_

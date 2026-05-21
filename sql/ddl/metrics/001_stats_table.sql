@@ -1,5 +1,5 @@
 -- Extracted from flowdefs/LocationStream/13_ddl.sql (STATS table only)
-CREATE OR REPLACE TABLE {{ database }}.{{ schema }}.STATS (
+CREATE TABLE IF NOT EXISTS {{ database }}.{{ schema_prefix }}METRICS.STATS (
 	ID NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 ORDER,
 	JOBID VARCHAR(16777216),
 	JOBTYPE VARCHAR(16777216),

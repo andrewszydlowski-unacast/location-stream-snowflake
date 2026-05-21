@@ -1,0 +1,4 @@
+# Feature-branch auto-deploy (push to cp-*)
+branch_pattern: "^cp-[a-zA-Z0-9._-]+$"
+database: TEST
+max_schema_prefix_length: 50
