@@ -1,0 +1,4 @@
+# GitHub Environment: mock-prod — manual workflow_dispatch with approval
+name: mock-prod
+database: TEST
+schema: GITHUB_DEPLOY

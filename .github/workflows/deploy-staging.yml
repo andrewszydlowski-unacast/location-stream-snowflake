@@ -1,0 +1,70 @@
+# Deploy rendered SQL to TEST.PUBLIC (staging).
+# Requires GitHub Environment "staging" and Snowflake/VPN secrets (see README).
+
+name: Deploy staging
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DEPLOY_ENV: staging
+      SNOWFLAKE_DATABASE: TEST
+      SNOWFLAKE_SCHEMA: PUBLIC
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install script dependencies
+        run: pip install -r requirements.txt
+
+      - name: Render SQL for staging
+        run: python scripts/render_sql.py staging --list
+
+      - uses: snowflakedb/snowflake-cli-action@v2
+        with:
+          cli-version: "3.16"
+          default-config-file-path: "config.toml"
+
+      - name: Generate OTP
+        id: otp
+        run: |
+          sudo apt-get install -y oathtool
+          echo "token=$(oathtool -b --totp '${{ secrets.OTP_SECRET }}')" >> $GITHUB_OUTPUT
+
+      - name: Setup Pritunl and Connect
+        uses: nathanielvarona/pritunl-client-github-action@v1
+        with:
+          profile-file: ${{ secrets.PRITUNL_PROFILE_FILE }}
+          profile-pin: ${{ secrets.PRITUNL_PROFILE_PIN }}${{ steps.otp.outputs.token }}
+          vpn-mode: "ovpn"
+
+      - name: Deploy manifest objects to Snowflake
+        env:
+          SNOWFLAKE_AUTHENTICATOR: USERNAME_PASSWORD_MFA
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ vars.SNOWFLAKE_ROLE || 'PUBLIC' }}
+          SNOWFLAKE_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE || 'ASZYDLOWSKI_WH' }}
+          SNOWFLAKE_MFA: ${{ secrets.SNOWFLAKE_MFA }}
+        run: |
+          SNOWFLAKE_MFA_PASSCODE=$(oathtool -b --totp "$SNOWFLAKE_MFA")
+          SNOW_OPTS=(sql -x --authenticator USERNAME_PASSWORD_MFA --mfa-passcode "$SNOWFLAKE_MFA_PASSCODE")
+          while IFS= read -r f; do
+            echo "Applying $f"
+            snow "${SNOW_OPTS[@]}" -f "$f"
+          done < <(python scripts/render_sql.py staging --paths)

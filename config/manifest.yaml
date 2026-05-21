@@ -1,0 +1,9 @@
+# Objects are deployed in list order (DDL before procedures).
+version: 1
+objects:
+  - id: ddl.metrics.stats
+    path: sql/ddl/metrics/001_stats_table.sql
+    type: ddl
+  - id: procedure.metrics.record_stat
+    path: sql/procedures/metrics/record_stat.sql
+    type: procedure

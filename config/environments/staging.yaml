@@ -1,0 +1,4 @@
+# GitHub Environment: staging — auto-deploy on push to main
+name: staging
+database: TEST
+schema: PUBLIC
